@@ -159,6 +159,11 @@ public class GameManager : MonoBehaviour
             OrderManager.Instance.ResetOrders();
         }
 
+        if (CreatedPlayersManager.Instance != null)
+        {
+            CreatedPlayersManager.Instance.ResetPlayers();
+        }
+
         // Видалити збережену гру
         if (SaveSystem.Instance != null)
         {

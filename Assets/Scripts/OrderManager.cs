@@ -1,5 +1,4 @@
-﻿using System.Collections;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using UnityEngine;
 
 public class OrderManager : MonoBehaviour
@@ -7,11 +6,12 @@ public class OrderManager : MonoBehaviour
     public static OrderManager Instance { get; private set; }
 
     [Header("Order Spawn Settings")]
-    public float minSpawnInterval = 10f; // Мінімум 10 секунд між замовленнями
-    public float maxSpawnInterval = 30f; // Максимум 30 секунд між замовленнями
-    public int maxActiveOrders = 5; // Максимум активних замовлень одночасно
+    public float minSpawnInterval = 10f;
+    public float maxSpawnInterval = 30f;
+    public int maxActiveOrders = 5;
 
     private List<TeamOrder> activeOrders = new List<TeamOrder>();
+    private List<TeamOrder> acceptedOrders = new List<TeamOrder>();
     private List<TeamOrder> completedOrders = new List<TeamOrder>();
     private float timeUntilNextOrder;
 
@@ -30,7 +30,6 @@ public class OrderManager : MonoBehaviour
 
     private void Start()
     {
-        // Встановити час до першого замовлення
         timeUntilNextOrder = Random.Range(minSpawnInterval, maxSpawnInterval);
     }
 
@@ -42,13 +41,11 @@ public class OrderManager : MonoBehaviour
             TeamOrder order = activeOrders[i];
             order.UpdateTimer(Time.deltaTime);
             
-            // Видалити прострочені замовлення
             if (order.IsExpired())
             {
                 Debug.Log($"Order from {order.teamName} expired!");
                 activeOrders.RemoveAt(i);
                 
-                // Оповістити UIManager про оновлення
                 if (UIManager.Instance != null)
                 {
                     UIManager.Instance.RefreshOrdersUI();
@@ -80,9 +77,8 @@ public class OrderManager : MonoBehaviour
         TeamOrder order = new TeamOrder(team, reputation);
         activeOrders.Add(order);
 
-        Debug.Log($"New order from {team}! Time remaining: 30s");
+        Debug.Log($"New order from {team}! Reputation: {reputation:F0}, Requirements: {order.playerRequirements.Count}, Payout: ${order.basePayout}");
         
-        // Оповістити UIManager про нове замовлення
         if (UIManager.Instance != null)
         {
             UIManager.Instance.RefreshOrdersUI();
@@ -94,6 +90,21 @@ public class OrderManager : MonoBehaviour
         return new List<TeamOrder>(activeOrders);
     }
 
+    public List<TeamOrder> GetAcceptedOrders()
+    {
+        return new List<TeamOrder>(acceptedOrders);
+    }
+
+    public TeamOrder GetOrderById(string orderId)
+    {
+        TeamOrder order = activeOrders.Find(o => o.orderId == orderId);
+        if (order == null)
+        {
+            order = acceptedOrders.Find(o => o.orderId == orderId);
+        }
+        return order;
+    }
+
     public bool AcceptOrder(string orderId)
     {
         TeamOrder order = activeOrders.Find(o => o.orderId == orderId);
@@ -102,15 +113,16 @@ public class OrderManager : MonoBehaviour
             return false;
         }
 
-        // Тут можна додати логіку прийняття замовлення
-        // Наприклад, перемістити замовлення в "прийняті" список
+        acceptedOrders.Add(order);
+        activeOrders.Remove(order);
+
         Debug.Log($"Order from {order.teamName} accepted!");
         return true;
     }
 
     public bool SubmitPlayer(string orderId, int requirementIndex, PlayerStats player)
     {
-        TeamOrder order = activeOrders.Find(o => o.orderId == orderId);
+        TeamOrder order = acceptedOrders.Find(o => o.orderId == orderId);
         if (order == null || requirementIndex >= order.playerRequirements.Count)
         {
             return false;
@@ -141,7 +153,7 @@ public class OrderManager : MonoBehaviour
 
     private void CompleteOrder(TeamOrder order)
     {
-        // Calculate overall match score
+        // Система оцінювання згідно з ORDER_BALANCE_GUIDE.md
         float totalScore = 0f;
         foreach (var requirement in order.playerRequirements)
         {
@@ -149,30 +161,43 @@ public class OrderManager : MonoBehaviour
         }
         float averageScore = totalScore / order.playerRequirements.Count;
 
-        // Determine success level
-        int payout = 0;
-        float reputationChange = 0f;
+        int payout;
+        float reputationChange;
 
-        if (averageScore >= 90f)
+        if (averageScore >= 95f)
         {
-            // Success!
-            payout = order.basePayout;
+            // 95%+ (Ідеально): +30% до винагороди, +8 репутації
+            payout = Mathf.RoundToInt(order.basePayout * 1.3f);
+            reputationChange = 8f;
+            Debug.Log($"Order completed PERFECTLY! Score: {averageScore:F1}% | +${payout} | +{reputationChange} rep");
+        }
+        else if (averageScore >= 85f)
+        {
+            // 85-95% (Відмінно): +10% до винагороди, +5 репутації
+            payout = Mathf.RoundToInt(order.basePayout * 1.1f);
             reputationChange = 5f;
-            Debug.Log($"Order completed successfully! +${payout}, +{reputationChange} rep");
+            Debug.Log($"Order completed EXCELLENTLY! Score: {averageScore:F1}% | +${payout} | +{reputationChange} rep");
         }
         else if (averageScore >= 70f)
         {
-            // Acceptable
+            // 70-85% (Добре): 100% винагороди, +3 репутації
+            payout = order.basePayout;
+            reputationChange = 3f;
+            Debug.Log($"Order completed WELL! Score: {averageScore:F1}% | +${payout} | +{reputationChange} rep");
+        }
+        else if (averageScore >= 50f)
+        {
+            // 50-70% (Прийнятно): 70% винагороди, +1 репутація
             payout = Mathf.RoundToInt(order.basePayout * 0.7f);
-            reputationChange = 2f;
-            Debug.Log($"Order completed acceptably. +${payout}, +{reputationChange} rep");
+            reputationChange = 1f;
+            Debug.Log($"Order completed ACCEPTABLY. Score: {averageScore:F1}% | +${payout} | +{reputationChange} rep");
         }
         else
         {
-            // Poor performance
-            payout = Mathf.RoundToInt(order.basePayout * 0.3f);
-            reputationChange = -3f;
-            Debug.Log($"Order completed poorly. +${payout}, {reputationChange} rep");
+            // <50% (Погано): 40% винагороди, -1 репутація
+            payout = Mathf.RoundToInt(order.basePayout * 0.4f);
+            reputationChange = -1f;
+            Debug.Log($"Order completed POORLY. Score: {averageScore:F1}% | +${payout} | {reputationChange} rep");
         }
 
         // Apply rewards/penalties
@@ -189,12 +214,16 @@ public class OrderManager : MonoBehaviour
         // Move to completed orders
         order.isCompleted = true;
         completedOrders.Add(order);
-        activeOrders.Remove(order);
+        acceptedOrders.Remove(order);
         
-        // Оповістити UIManager
         if (UIManager.Instance != null)
         {
             UIManager.Instance.RefreshOrdersUI();
+        }
+        
+        if (NotificationManager.Instance != null)
+        {
+            NotificationManager.Instance.ShowSuccess($"Order completed! +${payout}");
         }
     }
 
@@ -207,6 +236,8 @@ public class OrderManager : MonoBehaviour
     {
         activeOrders.Clear();
         completedOrders.Clear();
+        acceptedOrders.Clear();
         timeUntilNextOrder = Random.Range(minSpawnInterval, maxSpawnInterval);
     }
 }
+

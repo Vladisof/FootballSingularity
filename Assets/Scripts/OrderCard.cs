@@ -107,7 +107,12 @@ public class OrderCard : MonoBehaviour
             if (accepted)
             {
                 Debug.Log($"Accepted order from {order.teamName}");
-                // Тут можна додати логіку переходу на екран виконання замовлення
+                
+                // Оновити UI
+                if (UIManager.Instance != null)
+                {
+                    UIManager.Instance.RefreshOrdersUI();
+                }
             }
         }
     }

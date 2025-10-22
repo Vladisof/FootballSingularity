@@ -44,6 +44,9 @@ public class UIManager : MonoBehaviour
     [Header("Orders Panel Elements")]
     public Transform ordersContainer;
     public GameObject orderCardPrefab;
+    public Transform acceptedOrdersContainer;
+    public GameObject acceptedOrderCardPrefab;
+    public TextMeshProUGUI ordersTabText;
 
     [Header("Research Panel Elements")]
     public Button researchAnimalButton;
@@ -69,8 +72,17 @@ public class UIManager : MonoBehaviour
     public GameObject mutationCardPrefab;
     public TextMeshProUGUI activeMutationsCountText;
 
+    [Header("Player Selection Panel Elements")]
+    public GameObject playerSelectionPanel;
+    public Transform playerSelectionContainer;
+    public GameObject playerSelectionCardPrefab;
+    public TextMeshProUGUI playerSelectionTitleText;
+    public Button closePlayerSelectionButton;
+
     private List<DNAStrand> selectedDNA = new List<DNAStrand>();
     private BaseSubject selectedSubject;
+    private string currentOrderId;
+    private int currentRequirementIndex;
 
     private void Awake()
     {
@@ -288,6 +300,16 @@ public class UIManager : MonoBehaviour
         RefreshActiveMutationsUI();
     }
 
+    public void ShowPlayerSelectionPanel(string orderId, int requirementIndex)
+    {
+        currentOrderId = orderId;
+        currentRequirementIndex = requirementIndex;
+        
+        HideAllPanels();
+        if (playerSelectionPanel != null) playerSelectionPanel.SetActive(true);
+        RefreshPlayerSelectionUI();
+    }
+
     private void HideAllPanels()
     {
         if (mainMenuPanel != null) mainMenuPanel.SetActive(false);
@@ -297,6 +319,7 @@ public class UIManager : MonoBehaviour
         if (upgradesPanel != null) upgradesPanel.SetActive(false);
         if (mutationPanel != null) mutationPanel.SetActive(false);
         if (activeMutationsPanel != null) activeMutationsPanel.SetActive(false);
+        if (playerSelectionPanel != null) playerSelectionPanel.SetActive(false);
         // Don't hide pause menu here
     }
 
@@ -374,6 +397,38 @@ public class UIManager : MonoBehaviour
             {
                 cardScript.Setup(order);
             }
+        }
+
+        // Refresh accepted orders
+        RefreshAcceptedOrdersUI();
+    }
+
+    public void RefreshAcceptedOrdersUI()
+    {
+        if (OrderManager.Instance == null) return;
+
+        foreach (Transform child in acceptedOrdersContainer)
+        {
+            Destroy(child.gameObject);
+        }
+
+        List<TeamOrder> acceptedOrders = OrderManager.Instance.GetAcceptedOrders();
+        foreach (TeamOrder order in acceptedOrders)
+        {
+            GameObject card = Instantiate(acceptedOrderCardPrefab, acceptedOrdersContainer);
+            AcceptedOrderCard cardScript = card.GetComponent<AcceptedOrderCard>();
+            if (cardScript != null)
+            {
+                cardScript.Setup(order);
+            }
+        }
+
+        // Update orders tab text
+        if (ordersTabText != null)
+        {
+            int activeCount = OrderManager.Instance.GetActiveOrders().Count;
+            int acceptedCount = OrderManager.Instance.GetAcceptedOrders().Count;
+            ordersTabText.text = $"Active Orders ({activeCount}) / Accepted Orders ({acceptedCount})";
         }
     }
 
@@ -519,7 +574,21 @@ public class UIManager : MonoBehaviour
         {
             Debug.Log("Mutation successful! Player created with stats:");
             Debug.Log($"Overall Rating: {result.mutatedPlayer.GetOverallRating()}");
-            // Could show result panel here
+            
+            // Зберегти створеного гравця
+            if (CreatedPlayersManager.Instance != null && selectedSubject != null)
+            {
+                CreatedPlayer newPlayer = new CreatedPlayer(result.mutatedPlayer, selectedDNA, selectedSubject);
+                CreatedPlayersManager.Instance.AddPlayer(newPlayer);
+                Debug.Log($"Player {newPlayer.playerName} saved to roster!");
+            }
+            
+            // Використати суб'єкта (видалити його зі списку)
+            if (SubjectGenerator.Instance != null && selectedSubject != null)
+            {
+                SubjectGenerator.Instance.UseSubject(selectedSubject.subjectId);
+            }
+            
             ShowLabPanel();
         }
         else
@@ -589,6 +658,79 @@ public class UIManager : MonoBehaviour
                     Debug.LogWarning("MutationCard component not found on instantiated prefab");
                 }
             }
+        }
+    }
+
+    // Player Selection UI
+    private void RefreshPlayerSelectionUI()
+    {
+        if (currentOrderId == null || currentRequirementIndex < 0) return;
+
+        // Clear existing player selections
+        foreach (Transform child in playerSelectionContainer)
+        {
+            Destroy(child.gameObject);
+        }
+
+        // Get the current order and its requirements
+        TeamOrder currentOrder = OrderManager.Instance.GetOrderById(currentOrderId);
+        if (currentOrder == null) return;
+
+        if (playerSelectionTitleText != null)
+        {
+            playerSelectionTitleText.text = $"Select Player for {currentOrder.teamName} Order";
+        }
+
+        // Display available players
+        if (CreatedPlayersManager.Instance != null)
+        {
+            List<CreatedPlayer> availablePlayers = CreatedPlayersManager.Instance.GetAvailablePlayers();
+            foreach (CreatedPlayer player in availablePlayers)
+            {
+                GameObject card = Instantiate(playerSelectionCardPrefab, playerSelectionContainer);
+                PlayerSelectionCard cardScript = card.GetComponent<PlayerSelectionCard>();
+                if (cardScript != null)
+                {
+                    cardScript.Setup(player, OnPlayerSelected);
+                }
+            }
+        }
+
+        if (closePlayerSelectionButton != null)
+        {
+            closePlayerSelectionButton.onClick.RemoveAllListeners();
+            closePlayerSelectionButton.onClick.AddListener(HidePlayerSelectionPanel);
+        }
+    }
+
+    private void OnPlayerSelected(CreatedPlayer player)
+    {
+        if (currentOrderId != null && OrderManager.Instance != null)
+        {
+            // Submit the player to fulfill the requirement
+            bool success = OrderManager.Instance.SubmitPlayer(currentOrderId, currentRequirementIndex, player.stats);
+            
+            if (success)
+            {
+                Debug.Log($"Player {player.playerName} submitted successfully!");
+                
+                // Refresh orders UI
+                RefreshOrdersUI();
+                RefreshAcceptedOrdersUI();
+            }
+
+            // Hide player selection and return to orders panel
+            HidePlayerSelectionPanel();
+            ShowOrdersPanel();
+        }
+    }
+
+    public void HidePlayerSelectionPanel()
+    {
+        if (playerSelectionPanel != null)
+        {
+            playerSelectionPanel.SetActive(false);
+            Time.timeScale = 1f; // Resume game
         }
     }
 

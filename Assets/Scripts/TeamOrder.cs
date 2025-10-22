@@ -21,24 +21,58 @@ public class TeamOrder
         teamName = team;
         currentReputation = reputation;
         playerRequirements = new List<PlayerRequirement>();
-        basePayout = CalculateBasePayout(reputation);
-        maxTime = 30f; // 30 секунд на прийняття замовлення
-        timeRemaining = maxTime;
-        isCompleted = false;
-
-        // Generate 3 player requirements
-        for (int i = 0; i < 3; i++)
+        
+        // Визначити кількість гравців за репутацією
+        int playerCount = GetPlayerCountForReputation(reputation);
+        
+        // Generate player requirements
+        for (int i = 0; i < playerCount; i++)
         {
             playerRequirements.Add(new PlayerRequirement(reputation));
         }
+        
+        // Calculate payout based on requirements
+        basePayout = CalculateBasePayout(reputation);
+        
+        maxTime = 30f; // 30 секунд на прийняття замовлення
+        timeRemaining = maxTime;
+        isCompleted = false;
 
         // Generate bonus tag
         GenerateBonusTag();
     }
 
+    private int GetPlayerCountForReputation(float rep)
+    {
+        if (rep < 20f) return 1; // Початківці: 1 гравець
+        else if (rep < 40f) return UnityEngine.Random.Range(1, 3); // Новачки: 1-2 гравці
+        else if (rep < 60f) return UnityEngine.Random.Range(1, 3); // Середній: 1-2 гравці
+        else return UnityEngine.Random.Range(2, 4); // Досвідчені та Експерти: 2-3 гравці
+    }
+
     private int CalculateBasePayout(float rep)
     {
-        return Mathf.RoundToInt(100 + (rep * 5)); // Higher rep = better pay
+        // Базова винагорода = 100$ + (мінімальна вимога × 2) + (різниця між оптимальним і мінімумом × 3) × випадковий множник (0.8-1.2)
+        float baseReward = 100f;
+        
+        // Додати винагороду за складність вимог
+        foreach (var req in playerRequirements)
+        {
+            foreach (var statReq in req.statRequirements)
+            {
+                int minValue = statReq.Value.minValue;
+                int optimalValue = statReq.Value.maxValue;
+                int difference = optimalValue - minValue;
+                
+                baseReward += (minValue * 2f) + (difference * 3f);
+            }
+        }
+        
+        // Випадковий множник для варіативності
+        float randomMultiplier = UnityEngine.Random.Range(0.8f, 1.2f);
+        baseReward *= randomMultiplier;
+        
+        return Mathf.RoundToInt(baseReward);
     }
 
     private void GenerateBonusTag()
@@ -72,53 +106,153 @@ public class TeamOrder
     {
         return Mathf.Clamp01(timeRemaining / maxTime);
     }
+    
+    // Оцінка виконання ордера та розрахунок фінальної винагороди
+    public int CalculateFinalReward(out int reputationChange)
+    {
+        float totalScore = 0f;
+        int fulfilledCount = 0;
+        
+        foreach (var req in playerRequirements)
+        {
+            if (req.isFulfilled)
+            {
+                totalScore += req.CalculateMatchScore();
+                fulfilledCount++;
+            }
+        }
+        
+        if (fulfilledCount == 0)
+        {
+            reputationChange = -1;
+            return Mathf.RoundToInt(basePayout * 0.4f);
+        }
+        
+        float averageScore = totalScore / fulfilledCount;
+        
+        // Система оцінювання згідно з гайдом
+        float rewardMultiplier;
+        if (averageScore >= 95f)
+        {
+            // Ідеально: +30% до винагороди, +8 репутації
+            rewardMultiplier = 1.3f;
+            reputationChange = 8;
+        }
+        else if (averageScore >= 85f)
+        {
+            // Відмінно: +10% до винагороди, +5 репутації
+            rewardMultiplier = 1.1f;
+            reputationChange = 5;
+        }
+        else if (averageScore >= 70f)
+        {
+            // Добре: 100% винагороди, +3 репутації
+            rewardMultiplier = 1.0f;
+            reputationChange = 3;
+        }
+        else if (averageScore >= 50f)
+        {
+            // Прийнятно: 70% винагороди, +1 репутація
+            rewardMultiplier = 0.7f;
+            reputationChange = 1;
+        }
+        else
+        {
+            // Погано: 40% винагороди, -1 репутація
+            rewardMultiplier = 0.4f;
+            reputationChange = -1;
+        }
+        
+        return Mathf.RoundToInt(basePayout * rewardMultiplier);
+    }
 }
 
 [Serializable]
 public class PlayerRequirement
 {
     public string position;
-    public Dictionary<string, StatRequirement> statRequirements;
+    public Dictionary<string, StatRequirement> StatRequirements;
     public bool isFulfilled;
     public PlayerStats submittedPlayer;
+    
+    // Властивість для зворотної сумісності
+    public Dictionary<string, StatRequirement> statRequirements 
+    { 
+        get => StatRequirements; 
+        set => StatRequirements = value; 
+    }
 
     public PlayerRequirement(float reputation)
     {
         string[] positions = { "Forward", "Midfielder", "Defender", "Goalkeeper" };
         position = positions[UnityEngine.Random.Range(0, positions.Length)];
-        statRequirements = new Dictionary<string, StatRequirement>();
+        StatRequirements = new Dictionary<string, StatRequirement>();
         isFulfilled = false;
 
-        // Generate 2-3 stat requirements based on position
+        // Generate stat requirements based on position and reputation
         GenerateRequirementsForPosition(position, reputation);
     }
 
     private void GenerateRequirementsForPosition(string pos, float reputation)
     {
-        int minStatValue = Mathf.RoundToInt(40 + (reputation / 5)); // Higher rep = harder requirements
-        int maxStatValue = minStatValue + 20;
+        // Адаптивна складність згідно з ORDER_BALANCE_GUIDE.md
+        int minStatValue, optimalRange;
+        
+        if (reputation < 20f)
+        {
+            // Репутація 0-20 (Початківці): 30-45 мінімум, +10-20 до оптимального
+            minStatValue = UnityEngine.Random.Range(30, 46);
+            optimalRange = UnityEngine.Random.Range(10, 21);
+        }
+        else if (reputation < 40f)
+        {
+            // Репутація 20-40 (Новачки): 40-55 мінімум, +10-25 до оптимального
+            minStatValue = UnityEngine.Random.Range(40, 56);
+            optimalRange = UnityEngine.Random.Range(10, 26);
+        }
+        else if (reputation < 60f)
+        {
+            // Репутація 40-60 (Середній рівень): 50-65 мінімум, +15-25 до оптимального
+            minStatValue = UnityEngine.Random.Range(50, 66);
+            optimalRange = UnityEngine.Random.Range(15, 26);
+        }
+        else if (reputation < 80f)
+        {
+            // Репутація 60-80 (Досвідчені): 60-75 мінімум, +15-25 до оптимального
+            minStatValue = UnityEngine.Random.Range(60, 76);
+            optimalRange = UnityEngine.Random.Range(15, 26);
+        }
+        else
+        {
+            // Репутація 80-100 (Експерти): 70-85 мінімум, +10-20 до оптимального
+            minStatValue = UnityEngine.Random.Range(70, 86);
+            optimalRange = UnityEngine.Random.Range(10, 21);
+        }
+        
+        int optimalValue = Mathf.Min(99, minStatValue + optimalRange);
 
+        // Генерувати вимоги за позицією
         switch (pos)
         {
             case "Forward":
-                statRequirements["speed"] = new StatRequirement(minStatValue, 99);
-                statRequirements["attack"] = new StatRequirement(minStatValue + 5, 99);
-                statRequirements["accuracy"] = new StatRequirement(minStatValue - 5, 99);
+                StatRequirements["speed"] = new StatRequirement(minStatValue, optimalValue);
+                StatRequirements["attack"] = new StatRequirement(Mathf.Min(99, minStatValue + 5), Mathf.Min(99, optimalValue + 5));
+                StatRequirements["accuracy"] = new StatRequirement(Mathf.Max(30, minStatValue - 5), Mathf.Max(30, optimalValue - 5));
                 break;
             case "Midfielder":
-                statRequirements["stamina"] = new StatRequirement(minStatValue, 99);
-                statRequirements["agility"] = new StatRequirement(minStatValue, 99);
-                statRequirements["speed"] = new StatRequirement(minStatValue - 10, 99);
+                StatRequirements["stamina"] = new StatRequirement(minStatValue, optimalValue);
+                StatRequirements["agility"] = new StatRequirement(minStatValue, optimalValue);
+                StatRequirements["speed"] = new StatRequirement(Mathf.Max(30, minStatValue - 10), Mathf.Max(30, optimalValue - 10));
                 break;
             case "Defender":
-                statRequirements["defense"] = new StatRequirement(minStatValue + 5, 99);
-                statRequirements["strength"] = new StatRequirement(minStatValue, 99);
-                statRequirements["jumping"] = new StatRequirement(minStatValue - 5, 99);
+                StatRequirements["defense"] = new StatRequirement(Mathf.Min(99, minStatValue + 5), Mathf.Min(99, optimalValue + 5));
+                StatRequirements["strength"] = new StatRequirement(minStatValue, optimalValue);
+                StatRequirements["jumping"] = new StatRequirement(Mathf.Max(30, minStatValue - 5), Mathf.Max(30, optimalValue - 5));
                 break;
             case "Goalkeeper":
-                statRequirements["jumping"] = new StatRequirement(minStatValue + 5, 99);
-                statRequirements["agility"] = new StatRequirement(minStatValue, 99);
-                statRequirements["defense"] = new StatRequirement(minStatValue, 99);
+                StatRequirements["jumping"] = new StatRequirement(Mathf.Min(99, minStatValue + 5), Mathf.Min(99, optimalValue + 5));
+                StatRequirements["agility"] = new StatRequirement(minStatValue, optimalValue);
+                StatRequirements["defense"] = new StatRequirement(minStatValue, optimalValue);
                 break;
         }
     }
@@ -128,9 +262,9 @@ public class PlayerRequirement
         if (submittedPlayer == null) return 0f;
 
         float totalScore = 0f;
-        int requirementCount = statRequirements.Count;
+        int requirementCount = StatRequirements.Count;
 
-        foreach (var requirement in statRequirements)
+        foreach (var requirement in StatRequirements)
         {
             int playerStatValue = GetStatValue(submittedPlayer, requirement.Key);
             float score = requirement.Value.CalculateScore(playerStatValue);
@@ -171,21 +305,22 @@ public class StatRequirement
 
     public float CalculateScore(int actualValue)
     {
-        if (actualValue >= minValue && actualValue <= maxValue)
+        if (actualValue >= maxValue)
         {
-            // Perfect match
+            // Досягнення оптимального або вище - ідеально!
             return 1.0f;
         }
-        else if (actualValue < minValue)
+        else if (actualValue >= minValue)
         {
-            // Below minimum - penalize heavily
-            float diff = minValue - actualValue;
-            return Mathf.Max(0, 1.0f - (diff / 20f));
+            // Між мінімумом та оптимумом - лінійна шкала
+            float progress = (float)(actualValue - minValue) / (maxValue - minValue);
+            return 0.5f + (progress * 0.5f); // Від 0.5 до 1.0
         }
         else
         {
-            // Above maximum is actually good!
-            return 1.0f;
+            // Нижче мінімуму - штраф
+            float diff = minValue - actualValue;
+            return Mathf.Max(0, 0.5f - (diff / 40f)); // Максимальний штраф до 0
         }
     }
 }

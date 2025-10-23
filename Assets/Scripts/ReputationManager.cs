@@ -51,7 +51,9 @@ public class ReputationManager : MonoBehaviour
         foreach (string team in availableTeams)
         {
             string key = "Reputation_" + team;
-            float rep = PlayerPrefs.GetFloat(key, 50f); // Start at 50/100
+            // Початкова репутація 0-20 для нових гравців (рівень "Початківці")
+            float defaultRep = Random.Range(0f, 20f);
+            float rep = PlayerPrefs.GetFloat(key, defaultRep);
             teamReputations[team] = rep;
         }
     }

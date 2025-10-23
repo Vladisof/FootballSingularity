@@ -98,16 +98,37 @@ public class UIManager : MonoBehaviour
 
     private void Start()
     {
-        // Не показуємо автоматично LabPanel - чекаємо команди від GameManager
+        // НЕ показуємо HUD елементи при старті - вони покажуться при вході в гру
+        // ShowHUDElements(); // Видалено
+        
+        // Ініціалізувати кнопки
         InitializeButtons();
-        // ShowLabPanel(); // Видалено - тепер викликається з GameManager
+        
+        // Не показуємо автоматично LabPanel - чекаємо команди від GameManager
+        // ShowLabPanel(); // Викликається з GameManager
+    }
+    
+    private void ShowHUDElements()
+    {
+        // Показати HUD елементи (вони повинні бути видимі завжди під час гри)
+        if (moneyText != null) moneyText.gameObject.SetActive(true);
+        if (autoSaveIndicator != null) autoSaveIndicator.gameObject.SetActive(true);
+        if (menuButton != null) menuButton.gameObject.SetActive(true);
+        if (saveGameButton != null) saveGameButton.gameObject.SetActive(true);
+        
+        // Показати кнопки навігації
+        if (labButton != null) labButton.gameObject.SetActive(true);
+        if (ordersButton != null) ordersButton.gameObject.SetActive(true);
+        if (researchButton != null) researchButton.gameObject.SetActive(true);
+        if (upgradesButton != null) upgradesButton.gameObject.SetActive(true);
+        if (mutationsButton != null) mutationsButton.gameObject.SetActive(true);
     }
 
     private void InitializeButtons()
     {
         // HUD buttons
         if (menuButton != null)
-            menuButton.onClick.AddListener(ShowPauseMenu);
+            menuButton.onClick.AddListener(ReturnToMainMenu); // Прямо в головне меню
         
         if (saveGameButton != null)
             saveGameButton.onClick.AddListener(SaveGame);
@@ -232,7 +253,7 @@ public class UIManager : MonoBehaviour
         if (moneyText != null) moneyText.gameObject.SetActive(false);
         if (autoSaveIndicator != null) autoSaveIndicator.gameObject.SetActive(false);
         if (menuButton != null) menuButton.gameObject.SetActive(false);
-        if (saveGameButton != null) saveGameButton.gameObject.SetActive(false);
+        // saveGameButton видалена
         
         // Сховати кнопки навігації
         if (labButton != null) labButton.gameObject.SetActive(false);
@@ -245,21 +266,19 @@ public class UIManager : MonoBehaviour
     // Panel Navigation
     public void ShowLabPanel()
     {
-        // Показати HUD елементи
-        if (moneyText != null) moneyText.gameObject.SetActive(true);
-        if (autoSaveIndicator != null) autoSaveIndicator.gameObject.SetActive(true);
-        if (menuButton != null) menuButton.gameObject.SetActive(true);
-        if (saveGameButton != null) saveGameButton.gameObject.SetActive(true);
+        // Показати HUD елементи при вході в гру
+        ShowHUDElements();
         
-        // Показати кнопки навігації
-        if (labButton != null) labButton.gameObject.SetActive(true);
-        if (ordersButton != null) ordersButton.gameObject.SetActive(true);
-        if (researchButton != null) researchButton.gameObject.SetActive(true);
-        if (upgradesButton != null) upgradesButton.gameObject.SetActive(true);
-        if (mutationsButton != null) mutationsButton.gameObject.SetActive(true);
-        
+        // HUD та кнопки вже показані, просто перемикаємо панель
         HideAllPanels();
         if (labPanel != null) labPanel.SetActive(true);
+        
+        // Перемістити камеру в позицію гри ПІСЛЯ показу панелі
+        if (CameraController.Instance != null)
+        {
+            CameraController.Instance.MoveToGamePosition();
+        }
+        
         RefreshLabUI();
     }
 
@@ -765,6 +784,12 @@ public class UIManager : MonoBehaviour
     public void ReturnToMainMenu()
     {
         Time.timeScale = 1f; // Reset time scale
+        
+        // Перемістити камеру назад в позицію меню
+        if (CameraController.Instance != null)
+        {
+            CameraController.Instance.MoveToMenuPosition();
+        }
         
         // Повернутися в меню через GameManager
         if (GameManager.Instance != null)

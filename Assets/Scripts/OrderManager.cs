@@ -72,12 +72,16 @@ public class OrderManager : MonoBehaviour
         if (activeOrders.Count >= maxActiveOrders) return;
 
         string team = ReputationManager.Instance.GetRandomTeam();
-        float reputation = ReputationManager.Instance.GetReputation(team);
+        float baseReputation = ReputationManager.Instance.GetReputation(team);
+        
+        // Додати варіативність ±5 до репутації ордера
+        float reputationVariance = Random.Range(-5f, 5f);
+        float orderReputation = Mathf.Clamp(baseReputation + reputationVariance, 0f, 100f);
 
-        TeamOrder order = new TeamOrder(team, reputation);
+        TeamOrder order = new TeamOrder(team, orderReputation);
         activeOrders.Add(order);
 
-        Debug.Log($"New order from {team}! Reputation: {reputation:F0}, Requirements: {order.playerRequirements.Count}, Payout: ${order.basePayout}");
+        Debug.Log($"New order from {team}! Base Reputation: {baseReputation:F0}, Order Reputation: {orderReputation:F0}, Requirements: {order.playerRequirements.Count}, Payout: ${order.basePayout}");
         
         if (UIManager.Instance != null)
         {
@@ -240,4 +244,3 @@ public class OrderManager : MonoBehaviour
         timeUntilNextOrder = Random.Range(minSpawnInterval, maxSpawnInterval);
     }
 }
-

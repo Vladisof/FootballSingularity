@@ -35,10 +35,18 @@ public class SaveSystem : MonoBehaviour
             Destroy(gameObject);
         }
     }
+    
+    private void Start()
+    {
+        // Позначити гру як "dirty" одразу після старту, щоб автозбереження працювало
+        isDirty = true;
+        timeSinceLastSave = 0f;
+    }
 
     private void Update()
     {
-        if (enableAutoSave && isDirty)
+        // Автозбереження працює завжди, якщо увімкнено
+        if (enableAutoSave)
         {
             timeSinceLastSave += Time.deltaTime;
             
@@ -51,18 +59,15 @@ public class SaveSystem : MonoBehaviour
 
     private void OnApplicationQuit()
     {
-        // Зберегти гру при виході
-        if (isDirty)
-        {
-            SaveGame();
-            Debug.Log("Гру автоматично збережено при виході!");
-        }
+        // Завжди зберегти гру при виході
+        SaveGame();
+        Debug.Log("Гру автоматично збережено при виході!");
     }
 
     private void OnApplicationPause(bool pauseStatus)
     {
-        // Зберегти гру при згортанні (мобільні пристрої)
-        if (pauseStatus && isDirty)
+        // Завжди зберегти гру при згортанні (мобільні пристрої)
+        if (pauseStatus)
         {
             SaveGame();
             Debug.Log("Гру автоматично збережено при паузі!");
